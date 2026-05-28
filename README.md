@@ -1,197 +1,272 @@
-# Project Memory OS
+# ProjectMemoryOS
 
-Project Memory OS is an intelligent, developer-focused workspace application that acts as a long-term "Memory Operating System" for technical projects. It solves the problem of context fragmentation across LLM chat windows (Claude, GPT, Gemini, DeepSeek) by preserving logs, extracting actionable task lists, and enabling vector-based semantic search over historical discussions.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![CI Pipeline](https://github.com/prasunjha8/ProjectMemoryOS/actions/workflows/ci.yml/badge.svg)](https://github.com/prasunjha8/ProjectMemoryOS/actions/workflows/ci.yml)
+[![FastAPI Backend](https://img.shields.io/badge/Backend-FastAPI-green)](https://fastapi.tiangolo.com/)
+[![Next.js Frontend](https://img.shields.io/badge/Frontend-Next.js%2015-black)](https://nextjs.org/)
+[![Database](https://img.shields.io/badge/Database-PostgreSQL%20%2B%20pgvector-blue)](https://supabase.com)
 
----
+**ProjectMemoryOS** is an open-source, production-grade engineering memory and project intelligence platform. It transforms fragmented, ephemeral AI conversations (Claude, ChatGPT, Gemini, DeepSeek) and technical docs into a unified, persistent, and semantically searchable cognition layer. 
 
-## Technical Stack & Architecture
-
-### Frontend
-* **Framework**: Next.js 15 (App Router, React 19)
-* **Language**: TypeScript
-* **Styling**: TailwindCSS v4 (Curated sleek dark theme, glassmorphism UI elements, smooth micro-animations)
-* **State Management**: Zustand (Auth, Projects, Conversations, and Tasks stores)
-
-### Backend
-* **Framework**: FastAPI (Asynchronous Python 3.14+)
-* **Database Connectors**: SQLAlchemy 2.0 (async mappings) + `asyncpg` + `pgvector`
-* **NLP & Vector Embeddings**: Sentence-Transformers (local model `all-MiniLM-L6-v2` producing 384d vectors)
-* **File Parsers**: `PyPDF2` (for PDF text extractors), standard Markdown parsing, and JSON tree parsers (handling Claude & ChatGPT JSON exports)
-
-### Database
-* **Database**: PostgreSQL (via Supabase)
-* **Vector Extensions**: `pgvector` (HNSW indexing for high-dimensional cosine similarity searches)
-* **User Authentication**: Supabase Auth (Integrated directly with custom SQL triggers populating user profile metadata tables)
+Built for developers, AI engineers, robotics teams, and researchers, ProjectMemoryOS solves the problem of *context fragmentation* caused by switching between models, strict token windows, and disconnected engineering sessions.
 
 ---
 
-## Repository Directory Structure
+## 🌌 The Vision
+Modern engineering involves a fragmented stack of intelligence. A developer starts a task in Claude, debugs in ChatGPT, plans architecture on a whiteboard, and tracks tasks in Jira. When token limits are hit or context is cleared, valuable technical decisions, recurring bugs, and design context are lost forever.
+
+ProjectMemoryOS acts as a **Memory Operating System** for your projects. Instead of isolated chat history, it synthesizes every discussion, markdown file, and PDF document into a cohesive, structured graph of project evolution, auto-extracting tasks, linking dependencies, and keeping you oriented from the second you resume work.
+
+---
+
+## 🛠️ Implemented Systems
+
+### 1. Resume Context Engine (Project Continuity)
+Instantly re-orient yourself after returning to a project. When you open a project dashboard, the Resume Context Engine queries recent timelines, open tasks, and active blockers to generate:
+* **Current Project State Summary**: An LLM-synthesized narrative of where the project stands.
+* **Blocker Analysis**: Active obstacles that are halting progress.
+* **Next-Step Synthesis**: Dynamically generated actionable recommendations based on past chat logic.
+* **Timeline Synthesis**: An chronological audit trail of recent updates and discussion themes.
+
+### 2. Conversation Relationship Intelligence (Pattern Detection)
+Automatically identifies conceptual linkages and connections between different chats using pgvector similarity metrics and OpenRouter LLM classifications:
+* **Recurring Bug Tracking**: Matches current errors with previous discussions (e.g., *"This Docker OOM issue was discussed in Chat A, and a memory limit was recommended"*).
+* **Linked Engineering Discussions**: Flags follow-up architectures, decision evolutions, and conceptual continuities.
+* **Confidence Scoring**: Each relationship is mapped with a confidence score and a detailed AI reasoning snippet.
+
+### 3. Project Evolution Engine (Milestone Compression)
+Compresses long, complex architectural iterations into milestone summaries. It captures the trajectory of your project over days or weeks, distilling key insights and design pivots to combat information overload.
+
+### 4. Semantic Search & Vector Pipeline
+* **Local Embedding Engine**: Generates 384-dimensional dense vectors locally using `all-MiniLM-L6-v2` via `sentence-transformers` (zero API dependencies for vector math).
+* **HNSW Indexing**: Uses highly optimized Hierarchical Navigable Small World (HNSW) index structures in PostgreSQL (via pgvector) for rapid cosine similarity queries.
+* **Universal Parser**: Integrates extraction engines for plain text, Markdown logs, PDFs, and JSON chat transcripts (ChatGPT and Claude exports).
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    %% Clients
+    User([Developer / Builder]) <-->|Interacts| NextJS[Next.js 15 Frontend / Vercel]
+    
+    %% API Gateways
+    NextJS <-->|HTTPS / JSON / WSS| FastAPI[FastAPI Backend / Railway]
+    
+    %% Backend Services
+    subgraph FastAPI Container [FastAPI Backend Service]
+        Auth[Security & JWT Verifier] --> API[FastAPI Routers]
+        API --> Parser[Parser Service: PDF, MD, JSON]
+        API --> Embedding[Embedding Service: sentence-transformers]
+        API --> AIService[AI Service: OpenRouter Adapter]
+        API --> DbPool[SQLAlchemy Async Connection Pool]
+    end
+    
+    %% External Infrastructure
+    AIService <-->|BYOK / API Calls| OpenRouter[OpenRouter / Gemini 2.5]
+    DbPool <-->|SSL / transaction pooler: 6543| Supabase[Supabase PostgreSQL + pgvector]
+    NextJS <-->|Direct Auth & Metadata Sync| SupabaseAuth[Supabase Auth Registry]
+    
+    %% Databases
+    subgraph Supabase Instance [Supabase Cloud Database]
+        SupabaseAuth -->|Trigger syncs profiles| ProfilesTable[(profiles)]
+        Supabase --> ProfilesTable
+        Supabase --> ProjectsTable[(projects)]
+        Supabase --> ConvTable[(conversations)]
+        Supabase --> ChunkTable[(conversation_chunks + HNSW Vector Index)]
+        Supabase --> RelationshipTable[(conversation_relationships)]
+        Supabase --> SummaryTable[(summaries)]
+        Supabase --> TaskTable[(tasks)]
+    end
+```
+
+---
+
+## 💻 Tech Stack
+* **Frontend**: Next.js 15 (App Router, React 19), TypeScript, TailwindCSS v4, Zustand (state stores).
+* **Backend**: FastAPI (Python 3.12+), SQLAlchemy 2.0 (async), `asyncpg`, `pgvector`, `sentence-transformers`, `slowapi` (rate limiter), `sentry-sdk` (monitoring).
+* **Database**: PostgreSQL with `pgvector` hosted on Supabase (leveraging custom SQL triggers for user registration sync).
+* **Deployment & CI**: Vercel (frontend), Railway (backend), GitHub Actions (monorepo linting, Next.js build validation, python import checking).
+
+---
+
+## 📂 Repository Folder Structure
 
 ```
 projectos/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                # GitHub Actions monorepo CI/CD checks
 ├── backend/
 │   ├── app/
 │   │   ├── api/                  # API routing endpoints
-│   │   │   ├── v1/
-│   │   │   │   ├── projects.py   # Project listings & management
-│   │   │   │   ├── conversations.py # Chat ingestion & background tasks
-│   │   │   │   ├── tasks.py      # Task updates and deletions
-│   │   │   │   └── search.py     # pgvector semantic query search
-│   │   │   └── router.py         # Router registration
-│   │   ├── core/                 # Configurations, Security, Database
-│   │   │   ├── config.py         # Pydantic Settings env loader
-│   │   │   ├── database.py       # Async engine & session helper
+│   │   │   ├── middleware.py     # SlowAPI, Payload Limiters & Upload checks
+│   │   │   ├── router.py         # Root router registration
+│   │   │   └── v1/               # Versioned endpoint controllers
+│   │   ├── core/                 # Core configs, database pools, logging
+│   │   │   ├── config.py         # Pydantic Settings config loader
+│   │   │   ├── database.py       # SQLAlchemy engine & pooling settings
+│   │   │   ├── env_validator.py  # Boot-time environment diagnostics
+│   │   │   ├── logging_config.py # Structured JSON logger & request tracing
 │   │   │   └── security.py       # Supabase JWT token verification
-│   │   ├── models/               # SQLAlchemy 2.0 entities (Database schemas)
-│   │   ├── schemas/              # Pydantic schemas (Request/Response validation)
-│   │   ├── services/             # Core business logic services
-│   │   │   ├── ai_service.py     # OpenRouter connection and JSON schema extraction
-│   │   │   ├── embedding_service.py # Chunker and SentenceTransformers embeddings
-│   │   │   └── parser_service.py # PDF/Markdown/JSON chat files parsers
+│   │   ├── models/               # SQLAlchemy 2.0 ORM schemas
+│   │   ├── schemas/              # Pydantic request/response validators
+│   │   ├── services/             # Parser, Embedding & OpenRouter AI services
 │   │   └── main.py               # FastAPI entry point
-│   ├── requirements.txt          # Pip package requirements
-│   ├── .env.example              # Backend environment template
-│   └── venv/                     # Python virtual environment
+│   ├── Dockerfile                # Hardened non-root production Docker image
+│   ├── railway.json              # Railway custom build/healthcheck settings
+│   └── requirements.txt          # Python package list
 ├── database/
 │   └── schema.sql                # Complete database schemas (DDL, Indexes, Triggers)
-└── frontend/
-    ├── app/                      # Next.js App Router folders
-    │   ├── dashboard/            # Authed workspace boards
-    │   │   ├── project/
-    │   │   │   └── [projectId]/
-    │   │   │       ├── page.tsx  # Ingestion logs listing
-    │   │   │       ├── chat/     # Perplexity-style semantic search
-    │   │   │       └── tasks/    # Kanban action board
-    │   │   ├── layout.tsx        # Workspace sidebar navigation
-    │   │   └── page.tsx          # Overview stats hub
-    │   ├── globals.css           # Tailwind v4 directives and glow styles
-    │   ├── layout.tsx            # Main layout wrapper
-    │   └── page.tsx              # Landing & Login card
-    ├── lib/                      # Supabase client singleton configurations
-    ├── store/                    # Zustand auth/project/chat/task stores
-    ├── package.json              # npm package dependencies
-    └── .env.example              # Frontend environment template
+├── frontend/
+│   ├── app/                      # Next.js App Router (Dashboard, Kanban, Chat UI)
+│   ├── components/               # React UI modules (Resume cards, related chats)
+│   ├── lib/                      # Supabase Client & api-client.ts HTTP wrapper
+│   ├── store/                    # Zustand client state stores
+│   ├── vercel.json               # Vercel security headers configuration
+│   └── eslint.config.mjs         # Flat-format ESLint config
+├── .gitignore                    # Root monorepo Git ignore file
+└── README.md                     # Flagship documentation
 ```
 
 ---
 
-## Setup & Running Guide
+## 🔑 Environment Configuration
 
-### 1. Database Setup (Supabase)
-1. Create a new project in your [Supabase Dashboard](https://supabase.com).
-2. Go to the **SQL Editor** in the left sidebar.
-3. Open a new query tab, copy the entire contents of `database/schema.sql` into the editor, and click **Run**.
-4. This script will:
-   * Enable the required database extensions (`uuid-ossp` and `vector`).
-   * Create the tables (`profiles`, `projects`, `conversations`, `conversation_chunks`, `summaries`, `tasks`, `tags`, `conversation_tags`, `sessions`).
-   * Apply optimized database indexes, including the **HNSW index** on the vector column for accelerated cosine similarity lookups.
-   * Enable security triggers that automatically map user profiles from Supabase Auth registries upon initial sign-up.
+### Backend Environment Variables (`backend/.env`)
+Create a `backend/.env` file with the following variables:
+
+```ini
+ENVIRONMENT=development
+PORT=8000
+HOST=0.0.0.0
+
+# Database Configuration (Supabase Connection string with pooler port 6543)
+DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:6543/postgres
+DATABASE_POOL_SIZE=10
+DATABASE_MAX_OVERFLOW=10
+DATABASE_POOL_RECYCLE=1800
+
+# Supabase Auth Configuration
+SUPABASE_URL=https://[YOUR_REF].supabase.co
+# Found in Settings -> API -> JWT Settings -> JWT Secret
+SUPABASE_JWT_SECRET=your-supabase-jwt-secret
+
+# OpenRouter Settings (Bring Your Own Key)
+OPENROUTER_API_KEY=your-openrouter-api-key
+OPENROUTER_MODEL=google/gemini-2.5-flash
+
+# Optional Observability
+SENTRY_DSN=your-sentry-dsn
+RATE_LIMIT_PER_MINUTE=60
+ALLOWED_ORIGINS=http://localhost:3000,https://your-vercel-app.vercel.app
+```
+
+### Frontend Environment Variables (`frontend/.env.local`)
+Create a `frontend/.env.local` file:
+
+```ini
+NEXT_PUBLIC_SUPABASE_URL=https://[YOUR_REF].supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+```
+
+---
+
+## 🚀 Setup & Installation (Self-Hosting / Local)
+
+### Prerequisites
+* Python 3.12+
+* Node.js 20+
+* Supabase Account (Free tier is sufficient)
+
+### 1. Database Provisioning
+1. Create a project on [Supabase](https://supabase.com).
+2. Go to the **SQL Editor** in the Supabase Dashboard, create a new query, paste the contents of **[schema.sql](file:///Users/prasunjha/Desktop/projectos/database/schema.sql)**, and click **Run**.
+3. This creates all tables, optimized HNSW pgvector indexes, and the database trigger that automatically syncs newly registered users from Supabase Auth to your user profiles schema.
 
 ### 2. Backend Setup
-1. Open a terminal, change directory to the `backend/` folder:
+1. Navigate to the `backend/` directory:
    ```bash
    cd backend
    ```
-2. Copy the environment template and name it `.env`:
+2. Create and activate a virtual environment:
    ```bash
-   cp .env.example .env
+   python3 -m venv venv
+   source venv/bin/activate
    ```
-3. Open `.env` and fill in the required credentials:
-   * `DATABASE_URL`: Your Supabase connection string.
-   * `SUPABASE_JWT_SECRET`: Found in Supabase Dashboard -> Settings -> API -> JWT Secret. Used for secure local token decoding.
-   * `OPENROUTER_API_KEY`: Your OpenRouter API Key (to enable live AI summaries and task extraction).
-4. Run the FastAPI development server:
+3. Install dependencies:
    ```bash
-   ./venv/bin/uvicorn app.main:app --reload
+   pip install -r requirements.txt
    ```
-   The backend API will run on [http://localhost:8000](http://localhost:8000). You can access interactive documentation (Swagger UI) at [http://localhost:8000/docs](http://localhost:8000/docs).
-
+4. Copy `backend/.env.example` to `backend/.env` and fill in your variables.
+5. Run the server in development mode:
+   ```bash
+   python app/main.py
+   ```
+   Interactive Swagger documentation will be available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
 ### 3. Frontend Setup
-1. Open a new terminal, change directory to the `frontend/` folder:
+1. Navigate to the `frontend/` directory:
    ```bash
    cd ../frontend
    ```
-2. Copy the environment template and name it `.env.local`:
+2. Install npm dependencies:
    ```bash
-   cp .env.example .env.local
+   npm install
    ```
-3. Open `.env.local` and enter your Supabase URL and Anon Key.
-4. Run the Next.js development server:
+3. Copy `frontend/.env.example` to `frontend/.env.local` and enter your Supabase keys.
+4. Launch the Next.js development server:
    ```bash
    npm run dev
    ```
-   The frontend will boot on [http://localhost:3000](http://localhost:3000).
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## Developer Mock Mode (Offline Testing)
+## 🐳 Production Deployment
 
-To ensure a seamless local development experience and enable immediate offline previewing:
-* If the frontend `.env.local` file is missing or if Supabase keys are left empty, the application **automatically detects this and switches into Developer Mock Mode**.
-* When active, you can sign in by typing any email address (no password required).
-* The Zustand stores will simulate all backend tasks locally using `localStorage`:
-  * You can create and delete projects.
-  * You can paste conversation transcripts or upload mock logs. The uploader UI will show a live "Processing" status and transition to "Ready" after 2 seconds.
-  * The store will automatically inject simulated AI Summaries, Key Takeaways, Technical Insights, and create matching board Tasks from the uploaded conversation context.
-  * You can test the Perplexity-style **Semantic Search** board by typing keywords like "RTOS", "trajectory", or "pgvector" to see vector distance matching results.
-  * You can interact with the **Kanban Task Board**, shifting card columns (Todo, In Progress, Blocked, Completed) or manually creating inline tasks.
+### Backend (Railway)
+This project is configured with a custom `railway.json` and Docker container settings.
 
----
+> [!WARNING]
+> **RAM Allocation**: The backend runs embedding models locally on CPU. You **MUST** select an instance size with at least **1GB - 2GB RAM** (Render Starter/Standard or Railway Custom resource limits) to prevent Out-Of-Memory (OOM) crashes during server startup.
 
-## Scalability & Production Roadmap
+1. Deploy the `backend/` subdirectory from your repository on Railway.
+2. In your Railway service variables panel, set the variables listed in the backend env checklist above. Ensure `ENVIRONMENT` is set to `production` (this automatically disables Swagger docs and file reloading).
 
-1. **Local Embeddings GPU Acceleration**:
-   * For self-hosted backend deployments, `sentence-transformers` automatically detects and uses CUDA (Nvidia GPU) or Metal Performance Shaders (Apple Silicon MPS) to accelerate embedding generation.
-2. **Hybrid Search Re-ranking (RRF)**:
-   * In future versions, we can implement **Reciprocal Rank Fusion (RRF)** on the search router. This merges vector scores and text-matching indexes to produce a single, optimal context-matching sequence.
-3. **Chunk Segmentation Optimization**:
-   * Currently, the system uses semantic paragraph-based splitting. We can add semantic splitter logic that computes differences between consecutive sentences and chunks only when the thematic coherence drops below a threshold.
-4. **WebSocket/SSE status updates**:
-   * While polling `/conversations/{id}` is highly reliable and lightweight for V1, we can implement Server-Sent Events (SSE) or WebSockets in FastAPI for real-time notification streams.
+### Frontend (Vercel)
+1. Deploy the `frontend/` subdirectory on Vercel.
+2. Add your `NEXT_PUBLIC_` environment variables under Vercel configuration settings. Ensure `NEXT_PUBLIC_API_URL` points to your deployed Railway endpoint (e.g. `https://your-backend.up.railway.app/api/v1`).
 
 ---
 
-## Production Deployment
+## 🔒 Security Hardening
+ProjectMemoryOS implements strict security practices to run safely in production:
+* **Strict CORS**: Origins are bound directly to your Vercel domains via the `ALLOWED_ORIGINS` settings array.
+* **Upload Gatekeeper**: The `ContentLengthLimitMiddleware` blocks uploads larger than 15MB at the TCP network layer before the server allocates memory for streaming.
+* **Payload Verification**: Upstream files are validated by magic byte checking (e.g., verifying `%PDF` signatures for PDFs) to block malicious executables disguised with fake extensions.
+* **Token Hardening**: Integrates standard verification of Supabase JWT bearer signatures using `PyJWT` (HS256) for all service requests.
+* **Rate Limiting**: Integrated `SlowAPI` to prevent brute force API scans and resource abuse.
 
-This project is prepared for single-command deployments on public clouds: **Vercel** (frontend), **Railway** (backend), and **Supabase** (database).
+---
 
-### 1. Database (Supabase PostgreSQL)
-1. Provision a new project on [Supabase](https://supabase.com).
-2. Execute the entire SQL schema in `database/schema.sql` inside the **SQL Editor** on your Supabase dashboard to set up all tables, indexes, and user-registration triggers.
-3. Locate your connection details under **Project Settings -> API** and **Project Settings -> Database**.
+## 📈 Future Roadmap
+1. **GPU Acceleration**: Add automatic CUDA/MPS hardware detection to accelerate local embedding generation.
+2. **Hybrid Search (RRF)**: Implement Reciprocal Rank Fusion (RRF) combining vector similarity scores and fuzzy text indices (BM25) for optimal context retrieval.
+3. **WebSockets Support**: Switch from polling to WebSockets for real-time analysis status updates during ingestion pipelines.
+4. **Offline Local LLMs**: Add support for local Ollama/Llama.cpp model orchestration to remove third-party LLM API dependencies entirely.
 
-### 2. Backend API (Railway + Docker)
-The backend container is defined by `backend/Dockerfile` and configured via `backend/railway.json`.
+---
 
-> [!IMPORTANT]
-> **RAM Provisioning**: The backend downloads and runs `sentence-transformers` locally, which requires a minimum of **1GB to 2GB of RAM**. Select an instance tier that provides at least 1GB - 2GB RAM on Railway (or Render) to avoid Out-Of-Memory (OOM) app crashes during model loading.
+## 🤝 Contributing
+Contributions are welcome! Please follow these guidelines:
+1. Fork the repository and create a feature branch.
+2. Ensure linting passes locally (`npm run lint` in frontend).
+3. Open a detailed Pull Request detailing the changes and verification steps.
 
-1. Log in to [Railway](https://railway.app) and create a **New Project** linked to your GitHub repository.
-2. Select the `backend` subdirectory. Railway will detect the `Dockerfile` and build it automatically.
-3. Add the following **Environment Variables** in Railway service settings:
-   - `ENVIRONMENT`: `production` (disables auto-reloader and swagger docs for security)
-   - `DATABASE_URL`: Your Supabase PostgreSQL Connection URL (use port `6543` for connection pooling)
-   - `SUPABASE_URL`: Your Supabase API project URL
-   - `SUPABASE_JWT_SECRET`: Secret JWT key (found in Supabase API settings)
-   - `OPENROUTER_API_KEY`: Your OpenRouter API token
-   - `OPENROUTER_MODEL`: LLM model name (defaults to `google/gemini-2.5-flash`)
-   - `ALLOWED_ORIGINS`: Comma-separated list of allowed frontend origins (e.g. `https://your-app.vercel.app`)
+---
 
-### 3. Frontend UI (Vercel)
-The frontend uses Next.js 16 and is configured via `frontend/vercel.json` to enforce strict production security headers.
-
-1. Log in to [Vercel](https://vercel.com) and click **Add New -> Project**.
-2. Select your repository and set the root directory to `frontend`.
-3. Set the following **Environment Variables**:
-   - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase Anon public key
-   - `NEXT_PUBLIC_API_URL`: Deployed URL of your backend (e.g. `https://your-backend-production.up.railway.app/api/v1`)
-4. Click **Deploy**. Vercel will optimize and host the App Router build.
-
-### 4. CI/CD Pipeline (GitHub Actions)
-The repository includes a GitHub CI workflow (`.github/workflows/ci.yml`) that triggers on every pull request and push to the main branches.
-It automatically validates that:
-* The Next.js frontend compiles cleanly under TypeScript.
-* The FastAPI backend's dependencies and core modules import successfully.
-
+## 📄 License
+ProjectMemoryOS is licensed under the MIT License. See [LICENSE](LICENSE) for more information.
