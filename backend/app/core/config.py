@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     # Observability & Security Settings
     SENTRY_DSN: Optional[str] = Field(default=None, validation_alias="SENTRY_DSN")
     RATE_LIMIT_PER_MINUTE: int = Field(default=60, validation_alias="RATE_LIMIT_PER_MINUTE")
-    ALLOWED_ORIGINS: List[str] = Field(default=["*"], validation_alias="ALLOWED_ORIGINS")
+    ALLOWED_ORIGINS: List[str] = Field(
+        default=["*", "http://localhost:3000", "https://project-memory-os-chi.vercel.app"],
+        validation_alias="ALLOWED_ORIGINS"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
