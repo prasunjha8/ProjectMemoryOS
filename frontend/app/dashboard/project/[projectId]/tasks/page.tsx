@@ -14,7 +14,8 @@ import {
   ChevronDown,
   Calendar,
   Layers,
-  X
+  X,
+  Edit2
 } from "lucide-react";
 
 const COLUMNS = [
@@ -36,12 +37,39 @@ export default function TasksPage() {
   const projectId = params.projectId as string;
 
   const { selectedProject, projects, selectProject } = useProjectStore();
-  const { tasks, loading, fetchTasks, createTask, updateTaskStatus, deleteTask } = useTaskStore();
+  const { tasks, loading, fetchTasks, createTask, updateTaskStatus, updateTask, deleteTask } = useTaskStore();
 
   const [isAddingTask, setIsAddingTask] = useState<string | null>(null); // holds column ID where task is being added
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
+
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editPriority, setEditPriority] = useState("medium");
+
+  const handleEditTaskSubmit = async (e: React.FormEvent, taskId: string) => {
+    e.preventDefault();
+    if (!editTitle.trim()) return;
+    try {
+      await updateTask(taskId, {
+        title: editTitle,
+        description: editDesc,
+        priority: editPriority,
+      });
+      setEditingTaskId(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const startEditing = (task: Task) => {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title);
+    setEditDesc(task.description || "");
+    setEditPriority(task.priority);
+  };
 
   useEffect(() => {
     if (projectId) {
@@ -193,44 +221,104 @@ export default function TasksPage() {
                       key={task.id}
                       className="glass-panel border border-zinc-850/80 rounded-xl p-3.5 hover:border-zinc-700/50 transition flex flex-col gap-2 group text-left relative bg-zinc-950/10"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-bold text-white leading-snug break-words">
-                          {task.title}
-                        </span>
-                        
-                        <button
-                          onClick={() => deleteTask(task.id)}
-                          className="text-zinc-600 hover:text-red-400 transition p-0.5 opacity-0 group-hover:opacity-100 shrink-0 cursor-pointer"
-                          title="Delete task"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
+                      {editingTaskId === task.id ? (
+                        <form onSubmit={(e) => handleEditTaskSubmit(e, task.id)} className="space-y-3">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Task title..."
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            className="w-full bg-[#121217] border border-zinc-800 focus:border-violet-500 rounded-lg p-2 text-xs text-white outline-none"
+                          />
+                          <textarea
+                            placeholder="Details (optional)"
+                            value={editDesc}
+                            onChange={(e) => setEditDesc(e.target.value)}
+                            rows={2}
+                            className="w-full bg-[#121217] border border-zinc-800 focus:border-violet-500 rounded-lg p-2 text-xs text-white outline-none resize-none"
+                          />
 
-                      {task.description && (
-                        <p className="text-[11px] text-zinc-400 leading-relaxed font-medium">
-                          {task.description}
-                        </p>
+                          <div className="flex items-center justify-between">
+                            <select
+                              value={editPriority}
+                              onChange={(e) => setEditPriority(e.target.value)}
+                              className="bg-[#121217] border border-zinc-800 rounded p-1 text-[10px] text-zinc-300 outline-none"
+                            >
+                              <option value="low">Low</option>
+                              <option value="medium">Medium</option>
+                              <option value="high">High</option>
+                              <option value="critical">Critical</option>
+                            </select>
+
+                            <div className="flex gap-1.5 text-[10px]">
+                              <button
+                                type="button"
+                                onClick={() => setEditingTaskId(null)}
+                                className="px-2 py-1 border border-zinc-800 text-zinc-400 hover:text-white rounded transition cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded transition cursor-pointer font-medium"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-bold text-white leading-snug break-words">
+                              {task.title}
+                            </span>
+                            
+                            <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition">
+                              <button
+                                onClick={() => startEditing(task)}
+                                className="text-zinc-500 hover:text-white transition p-0.5 cursor-pointer"
+                                title="Edit task"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => deleteTask(task.id)}
+                                className="text-zinc-600 hover:text-red-400 transition p-0.5 cursor-pointer"
+                                title="Delete task"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {task.description && (
+                            <p className="text-[11px] text-zinc-400 leading-relaxed font-medium">
+                              {task.description}
+                            </p>
+                          )}
+
+                          {/* Footer: Priority & Status Mover */}
+                          <div className="flex items-center justify-between border-t border-zinc-900/60 pt-3 mt-1.5">
+                            {getPriorityBadge(task.priority)}
+
+                            {/* Status switcher */}
+                            <div className="relative inline-block text-left">
+                              <select
+                                value={task.status}
+                                onChange={(e) => moveTask(task.id, e.target.value)}
+                                className="bg-transparent text-zinc-500 hover:text-zinc-300 font-semibold text-[9px] uppercase tracking-wider outline-none cursor-pointer border border-transparent hover:border-zinc-800 rounded px-1 transition"
+                              >
+                                <option value="todo">Todo</option>
+                                <option value="in_progress">Active</option>
+                                <option value="blocked">Blocked</option>
+                                <option value="completed">Done</option>
+                              </select>
+                            </div>
+                          </div>
+                        </>
                       )}
-
-                      {/* Footer: Priority & Status Mover */}
-                      <div className="flex items-center justify-between border-t border-zinc-900/60 pt-3 mt-1.5">
-                        {getPriorityBadge(task.priority)}
-
-                        {/* Status switcher */}
-                        <div className="relative inline-block text-left">
-                          <select
-                            value={task.status}
-                            onChange={(e) => moveTask(task.id, e.target.value)}
-                            className="bg-transparent text-zinc-500 hover:text-zinc-300 font-semibold text-[9px] uppercase tracking-wider outline-none cursor-pointer border border-transparent hover:border-zinc-800 rounded px-1 transition"
-                          >
-                            <option value="todo">Todo</option>
-                            <option value="in_progress">Active</option>
-                            <option value="blocked">Blocked</option>
-                            <option value="completed">Done</option>
-                          </select>
-                        </div>
-                      </div>
                     </div>
                   ))
                 )}

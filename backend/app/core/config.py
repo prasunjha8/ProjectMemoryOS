@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: Optional[str] = Field(default=None, validation_alias="OPENROUTER_API_KEY")
     OPENROUTER_MODEL: str = Field(default="google/gemini-2.5-flash", validation_alias="OPENROUTER_MODEL")
 
+    # Embeddings configuration
+    DISABLE_LOCAL_EMBEDDINGS: bool = Field(default=False, validation_alias="DISABLE_LOCAL_EMBEDDINGS")
+    HF_API_TOKEN: Optional[str] = Field(default=None, validation_alias="HF_API_TOKEN")
+
     # Observability & Security Settings
     SENTRY_DSN: Optional[str] = Field(default=None, validation_alias="SENTRY_DSN")
     RATE_LIMIT_PER_MINUTE: int = Field(default=60, validation_alias="RATE_LIMIT_PER_MINUTE")

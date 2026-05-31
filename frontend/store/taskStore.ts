@@ -19,6 +19,7 @@ interface TaskState {
   fetchTasks: (projectId: string) => Promise<void>;
   createTask: (projectId: string, title: string, description?: string, priority?: string) => Promise<void>;
   updateTaskStatus: (taskId: string, status: string) => Promise<void>;
+  updateTask: (taskId: string, updates: Partial<Omit<Task, "id" | "project_id" | "created_at">>) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
 }
 
@@ -164,6 +165,38 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }
     } catch (e) {
       console.error("Error updating task status:", e);
+    }
+  },
+
+  updateTask: async (taskId: string, updates: Partial<Omit<Task, "id" | "project_id" | "created_at">>) => {
+    const isMock = useAuthStore.getState().isMock;
+    
+    if (isMock) {
+      const updatedList = get().tasks.map((t) =>
+        t.id === taskId ? { ...t, ...updates } : t
+      );
+      const task = get().tasks.find((t) => t.id === taskId);
+      if (task) {
+        localStorage.setItem(`projectos_mock_tasks_${task.project_id}`, JSON.stringify(updatedList));
+      }
+      set({ tasks: updatedList });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: getApiHeaders(),
+        body: JSON.stringify(updates),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({
+          tasks: get().tasks.map((t) => (t.id === taskId ? data : t)),
+        });
+      }
+    } catch (e) {
+      console.error("Error updating task:", e);
     }
   },
 

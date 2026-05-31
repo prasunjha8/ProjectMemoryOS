@@ -1,5 +1,6 @@
 from typing import List, Optional
 import logging
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,8 +50,9 @@ async def process_conversation_task(conversation_id: str):
     Background worker task to:
     1. Parse and chunk conversation.
     2. Request LLM Analysis (Summary, Insights, Suggested Tasks) from OpenRouter.
-    3. Generate local vector embeddings for chunks.
-    4. Save Summary, Tasks, and Chunks to PostgreSQL.
+    3. Save Summary, Tasks, and update status to completed immediately.
+    4. Generate local or API vector embeddings for chunks in a separate block.
+    5. Save Chunks and compute relationships.
     """
     # Create a fresh database session for background task
     async with SessionLocal() as db:
@@ -91,43 +93,53 @@ async def process_conversation_task(conversation_id: str):
                 )
                 db.add(task)
 
-            # 2. Chunk text and generate embeddings
-            chunks = EmbeddingService.chunk_text(conversation.raw_content)
-            for idx, chunk_text in enumerate(chunks):
-                # Local vector embedding generation (384 dimensions)
-                embedding = EmbeddingService.get_embedding(chunk_text)
-                
-                chunk_model = ConversationChunk(
-                    conversation_id=conversation_id,
-                    chunk_index=idx,
-                    content_chunk=chunk_text,
-                    embedding=embedding
-                )
-                db.add(chunk_model)
-
-            # Update status
+            # Set status to completed immediately so the user can see analysis right away
             conversation.processed_status = "completed"
             await db.commit()
-            logger.info(f"Successfully processed conversation: {conversation_id}")
+            logger.info(f"Committed summary, tasks and set status to completed for conversation: {conversation_id}")
+
+            # 2. Chunk text and generate embeddings in a separate try/except and transaction block
+            try:
+                chunks = EmbeddingService.chunk_text(conversation.raw_content)
+                if chunks:
+                    logger.info(f"Generating embeddings for {len(chunks)} chunks...")
+                    async with SessionLocal() as chunk_db:
+                        for idx, chunk_text in enumerate(chunks):
+                            # Generate embedding asynchronously (preventing event loop block)
+                            embedding = await EmbeddingService.get_embedding_async(chunk_text)
+                            
+                            chunk_model = ConversationChunk(
+                                conversation_id=conversation_id,
+                                chunk_index=idx,
+                                content_chunk=chunk_text,
+                                embedding=embedding
+                            )
+                            chunk_db.add(chunk_model)
+                        await chunk_db.commit()
+                        logger.info(f"Successfully generated and saved embeddings for: {conversation_id}")
+            except Exception as embed_err:
+                logger.exception(f"Non-fatal error generating embeddings for {conversation_id}: {str(embed_err)}")
 
             # 3. Analyze conceptual relationships to other chats
             try:
                 from app.services.relationship_service import RelationshipService
-                await RelationshipService.analyze_and_store_relationships(conversation_id, db)
+                async with SessionLocal() as rel_db:
+                    await RelationshipService.analyze_and_store_relationships(conversation_id, rel_db)
             except Exception as rel_err:
                 logger.error(f"Error executing relationship classification in background: {str(rel_err)}")
 
         except Exception as e:
             logger.exception(f"Error in background conversation processing for {conversation_id}: {str(e)}")
             try:
-                # Reload and set status to failed
-                result = await db.execute(
-                    select(Conversation).where(Conversation.id == conversation_id)
-                )
-                conversation = result.scalar_one_or_none()
-                if conversation:
-                    conversation.processed_status = "failed"
-                    await db.commit()
+                # Reload and set status to failed if it hasn't been completed yet
+                async with SessionLocal() as fail_db:
+                    result = await fail_db.execute(
+                        select(Conversation).where(Conversation.id == conversation_id)
+                    )
+                    conversation_record = result.scalar_one_or_none()
+                    if conversation_record and conversation_record.processed_status != "completed":
+                        conversation_record.processed_status = "failed"
+                        await fail_db.commit()
             except Exception as rollback_err:
                 logger.error(f"Failed to set status to failed: {str(rollback_err)}")
 

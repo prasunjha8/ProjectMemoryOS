@@ -1,6 +1,7 @@
 import json
 import re
 import logging
+import asyncio
 from typing import List, Dict, Any, Tuple
 import numpy as np
 import httpx
@@ -104,22 +105,29 @@ class RelationshipService:
 
         relationships = []
 
-        # 6. Analyze candidates using OpenRouter
-        for target_id, target_data in top_candidates:
-            target_summary_result = await db.execute(
-                select(Summary).where(cast(Summary.conversation_id, String) == target_id)
-            )
-            target_summary = target_summary_result.scalar_one_or_none()
-            target_summary_text = target_summary.summary_text if target_summary else target_data["title"]
+        # 6. Fetch target summaries in a single bulk query
+        target_ids = [target_id for target_id, _ in top_candidates]
+        summaries_result = await db.execute(
+            select(Summary).where(cast(Summary.conversation_id, String).in_(target_ids))
+        )
+        summaries_map = {str(sum_obj.conversation_id): sum_obj.summary_text for sum_obj in summaries_result.scalars().all()}
 
-            # Query LLM to classify relationship
+        # Define candidate processor task
+        async def process_candidate(target_id, target_data):
+            target_summary_text = summaries_map.get(str(target_id)) or target_data["title"]
             rel_type, confidence, reasoning = await cls._classify_relationship_llm(
                 new_conv.title, new_summary_text, target_data["title"], target_summary_text
             )
+            return target_id, rel_type, confidence, reasoning
 
-            # Only store if LLM is confident (confidence >= 0.5)
+        # Run OpenRouter classification requests concurrently
+        logger.info(f"Dispatching relationship LLM calls concurrently for {len(top_candidates)} candidates...")
+        tasks = [process_candidate(target_id, target_data) for target_id, target_data in top_candidates]
+        results = await asyncio.gather(*tasks)
+
+        # 7. Persist successful relationship connections
+        for target_id, rel_type, confidence, reasoning in results:
             if confidence >= 0.5:
-                # Add relationship to DB
                 relationship = ConversationRelationship(
                     source_conversation_id=new_conversation_id,
                     target_conversation_id=target_id,

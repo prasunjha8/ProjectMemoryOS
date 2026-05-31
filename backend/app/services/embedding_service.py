@@ -1,6 +1,10 @@
 import logging
-from typing import List
+import asyncio
+from typing import List, Optional
 import numpy as np
+import httpx
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +21,8 @@ class EmbeddingService:
         """
         global _model
         if _model is None:
+            if settings.DISABLE_LOCAL_EMBEDDINGS:
+                raise RuntimeError("Local embeddings are disabled (DISABLE_LOCAL_EMBEDDINGS is True)")
             try:
                 from sentence_transformers import SentenceTransformer
                 logger.info("Initializing SentenceTransformer all-MiniLM-L6-v2 model...")
@@ -30,21 +36,76 @@ class EmbeddingService:
     @classmethod
     def get_embedding(cls, text: str) -> List[float]:
         """
-        Generates a 384-dimensional vector embedding for the input text.
+        Synchronously generates a 384-dimensional vector embedding for the input text.
         """
         if not text.strip():
-            # Return zero vector if text is empty
             return [0.0] * 384
 
         try:
             model = cls._get_model()
-            # Encode text and convert numpy array to list of standard python floats
             embedding = model.encode(text, convert_to_numpy=True)
             return embedding.tolist()
         except Exception as e:
-            logger.error(f"Error generating embedding: {str(e)}")
-            # Fallback zero vector to prevent failure in processing pipelines
+            logger.error(f"Error generating synchronous embedding: {str(e)}")
             return [0.0] * 384
+
+    @classmethod
+    async def get_embedding_async(cls, text: str) -> List[float]:
+        """
+        Asynchronously generates a 384-dimensional vector embedding for the input text.
+        Tries:
+        1. Hugging Face Inference API if DISABLE_LOCAL_EMBEDDINGS is enabled or local model fails.
+        2. Local SentenceTransformer (via asyncio.to_thread) if allowed.
+        3. Falls back to zero vector [0.0]*384 on any failure.
+        """
+        if not text.strip():
+            return [0.0] * 384
+
+        # Try Hugging Face API first if configured to bypass local model
+        if settings.DISABLE_LOCAL_EMBEDDINGS:
+            hf_emb = await cls._get_hf_api_embedding(text)
+            if hf_emb:
+                return hf_emb
+            return [0.0] * 384
+
+        # Try local model
+        try:
+            # Load model (this may raise an exception if disabling or OOM/error)
+            model = await asyncio.to_thread(cls._get_model)
+            # Encode asynchronously in thread pool
+            embedding = await asyncio.to_thread(model.encode, text, convert_to_numpy=True)
+            return embedding.tolist()
+        except Exception as e:
+            logger.error(f"Local embedding generation failed, trying Hugging Face API fallback: {str(e)}")
+            hf_emb = await cls._get_hf_api_embedding(text)
+            if hf_emb:
+                return hf_emb
+            return [0.0] * 384
+
+    @classmethod
+    async def _get_hf_api_embedding(cls, text: str) -> Optional[List[float]]:
+        """
+        Queries the Hugging Face Inference API to generate embeddings.
+        """
+        url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+        headers = {}
+        if settings.HF_API_TOKEN:
+            headers["Authorization"] = f"Bearer {settings.HF_API_TOKEN}"
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, headers=headers, json={"inputs": text})
+                if response.status_code == 200:
+                    vector = response.json()
+                    if isinstance(vector, list) and len(vector) > 0:
+                        if isinstance(vector[0], list):
+                            vector = vector[0]
+                        return [float(x) for x in vector]
+                else:
+                    logger.warning(f"Hugging Face API returned status {response.status_code}: {response.text}")
+        except Exception as e:
+            logger.error(f"Error querying Hugging Face API: {str(e)}")
+        return None
 
     @staticmethod
     def chunk_text(text: str, chunk_size: int = 1500, chunk_overlap: int = 300) -> List[str]:

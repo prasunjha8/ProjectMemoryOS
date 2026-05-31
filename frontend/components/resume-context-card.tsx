@@ -12,7 +12,8 @@ import {
   Brain, 
   HelpCircle,
   TrendingUp,
-  Info
+  Info,
+  Plus
 } from "lucide-react";
 
 interface RecentActivityItem {
@@ -49,6 +50,35 @@ export default function ResumeContextCard({ projectId }: ResumeContextCardProps)
   const [data, setData] = useState<ResumeContextData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const [addingTaskIndex, setAddingTaskIndex] = useState<number | null>(null);
+  const [addedTaskIndices, setAddedTaskIndices] = useState<Set<number>>(new Set());
+
+  const handleAddRecommendedTask = async (actionText: string, priority: string, index: number) => {
+    setAddingTaskIndex(index);
+    try {
+      if (isMock) {
+        // Mock success delay
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      } else {
+        await apiClient.post(`/projects/${projectId}/tasks`, {
+          title: actionText,
+          description: "Extracted from recommended workspace actions.",
+          priority: priority,
+          status: "todo"
+        });
+      }
+      setAddedTaskIndices((prev) => {
+        const next = new Set(prev);
+        next.add(index);
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to add recommended task:", err);
+    } finally {
+      setAddingTaskIndex(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -284,22 +314,58 @@ export default function ResumeContextCard({ projectId }: ResumeContextCardProps)
               <Compass className="h-3 w-3 text-zinc-400" /> Recommended Actions
             </span>
             <ul className="space-y-2 text-xs">
-              {data.next_steps.map((step, i) => (
-                <li key={i} className="flex justify-between items-center bg-zinc-900/30 border border-zinc-900/50 p-2.5 rounded-xl min-w-0 gap-3">
-                  <span className="text-zinc-300 truncate leading-tight font-medium" title={step.action}>
-                    {step.action}
-                  </span>
-                  <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase shrink-0 ${
-                    step.priority === "high" || step.priority === "critical"
-                      ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                      : step.priority === "medium"
-                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                      : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                  }`}>
-                    {step.priority}
-                  </span>
-                </li>
-              ))}
+              {data.next_steps.map((step, i) => {
+                const isAdded = addedTaskIndices.has(i);
+                const isAdding = addingTaskIndex === i;
+
+                return (
+                  <li 
+                    key={i} 
+                    className="flex flex-col gap-2.5 bg-zinc-900/30 border border-zinc-900/50 p-3 rounded-xl text-left"
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <span className="text-zinc-300 leading-normal font-medium break-words flex-1">
+                        {step.action}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase shrink-0 ${
+                        step.priority === "high" || step.priority === "critical"
+                          ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                          : step.priority === "medium"
+                          ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                      }`}>
+                        {step.priority}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-end border-t border-zinc-900/30 pt-2">
+                      <button
+                        onClick={() => !isAdded && !isAdding && handleAddRecommendedTask(step.action, step.priority, i)}
+                        disabled={isAdded || isAdding}
+                        className={`flex items-center gap-1 text-[9px] font-bold px-2.5 py-1 rounded border transition ${
+                          isAdded
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 cursor-default"
+                            : "bg-violet-600/10 text-violet-400 border-violet-500/20 hover:bg-violet-500/20 cursor-pointer"
+                        }`}
+                      >
+                        {isAdding ? (
+                          <>
+                            <span className="h-2 w-2 animate-spin rounded-full border border-t-transparent border-violet-400 mr-1" />
+                            <span>Adding...</span>
+                          </>
+                        ) : isAdded ? (
+                          <span>✓ Added to Board</span>
+                        ) : (
+                          <>
+                            <Plus className="h-3 w-3" />
+                            <span>Add to Board</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>
