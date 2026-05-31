@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, Integer, ForeignKey, DateTime, func
+from sqlalchemy import String, Integer, ForeignKey, DateTime, func, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 
@@ -10,8 +10,8 @@ from app.core.database import Base
 class Conversation(Base):
     __tablename__ = "conversations"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, server_default=func.uuid_generate_v4())
-    project_id: Mapped[str] = mapped_column(String, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=func.uuid_generate_v4())
+    project_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     source_type: Mapped[str] = mapped_column(String, nullable=False)  # 'uploaded_chat', 'markdown', 'pdf', 'pasted_text'
     raw_content: Mapped[str] = mapped_column(String, nullable=False)
@@ -35,9 +35,9 @@ class Conversation(Base):
 class ConversationChunk(Base):
     __tablename__ = "conversation_chunks"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, server_default=func.uuid_generate_v4())
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=func.uuid_generate_v4())
     conversation_id: Mapped[str] = mapped_column(
-        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=False), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content_chunk: Mapped[str] = mapped_column(String, nullable=False)

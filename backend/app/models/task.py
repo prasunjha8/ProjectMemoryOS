@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, ForeignKey, DateTime, func
+from sqlalchemy import String, ForeignKey, DateTime, func, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -9,10 +9,10 @@ from app.core.database import Base
 class Task(Base):
     __tablename__ = "tasks"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, server_default=func.uuid_generate_v4())
-    project_id: Mapped[str] = mapped_column(String, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=func.uuid_generate_v4())
+    project_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     conversation_id: Mapped[Optional[str]] = mapped_column(
-        String, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+        UUID(as_uuid=False), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)

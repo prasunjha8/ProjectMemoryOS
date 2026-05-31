@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List
-from sqlalchemy import String, ForeignKey, DateTime, JSON, func
+from sqlalchemy import String, ForeignKey, DateTime, JSON, func, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -9,9 +9,9 @@ from app.core.database import Base
 class Summary(Base):
     __tablename__ = "summaries"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, server_default=func.uuid_generate_v4())
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=func.uuid_generate_v4())
     conversation_id: Mapped[str] = mapped_column(
-        String, ForeignKey("conversations.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
+        UUID(as_uuid=False), ForeignKey("conversations.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
     )
     summary_text: Mapped[str] = mapped_column(String, nullable=False)
     key_takeaways: Mapped[List[str]] = mapped_column(JSON, default=list)  # Stored as JSONB in PostgreSQL

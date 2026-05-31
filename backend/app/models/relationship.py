@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime, Float, func
+from sqlalchemy import String, ForeignKey, DateTime, Float, func, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -7,12 +7,12 @@ from app.core.database import Base
 class ConversationRelationship(Base):
     __tablename__ = "conversation_relationships"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, server_default=func.uuid_generate_v4())
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=func.uuid_generate_v4())
     source_conversation_id: Mapped[str] = mapped_column(
-        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=False), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     target_conversation_id: Mapped[str] = mapped_column(
-        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=False), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     relationship_type: Mapped[str] = mapped_column(String, nullable=False)
     confidence_score: Mapped[float] = mapped_column(Float, nullable=False)

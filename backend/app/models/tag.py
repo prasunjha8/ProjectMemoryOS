@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime, Column, Table, func
+from sqlalchemy import String, ForeignKey, DateTime, Column, Table, func, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -10,13 +10,13 @@ conversation_tags = Table(
     Base.metadata,
     Column(
         "conversation_id",
-        String,
+        UUID(as_uuid=False),
         ForeignKey("conversations.id", ondelete="CASCADE"),
         primary_key=True,
     ),
     Column(
         "tag_id",
-        String,
+        UUID(as_uuid=False),
         ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     ),
@@ -26,8 +26,8 @@ conversation_tags = Table(
 class Tag(Base):
     __tablename__ = "tags"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, server_default=func.uuid_generate_v4())
-    project_id: Mapped[str] = mapped_column(String, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=func.uuid_generate_v4())
+    project_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     color: Mapped[str] = mapped_column(String, default="#3B82F6")  # Tailwind blue-500 default
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
