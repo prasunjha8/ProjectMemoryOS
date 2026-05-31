@@ -15,8 +15,17 @@ from app.schemas.context import ResumeContextResponse, RecentActivityItem, NextS
 
 logger = logging.getLogger(__name__)
 
+# Simple in-memory cache mapping project_id -> cached_dict
+_resume_context_cache = {}
+
 
 class ContextService:
+    @classmethod
+    def clear_project_cache(cls, project_id: str):
+        """Clears the cached resume context for a specific project."""
+        logger.info(f"Clearing resume context cache for project: {project_id}")
+        _resume_context_cache.pop(str(project_id), None)
+
     @staticmethod
     def _clean_json_response(text: str) -> str:
         """
@@ -36,6 +45,13 @@ class ContextService:
         Fetches database assets (recent chats, summaries, tasks, granular chunks)
         and calls OpenRouter to synthesize a clean project resumption context.
         """
+        # Check cache first
+        if str(project_id) in _resume_context_cache:
+            logger.info(f"Cache HIT for project resume context: {project_id}")
+            return _resume_context_cache[str(project_id)]
+
+        logger.info(f"Cache MISS for project resume context: {project_id}. Synthesizing...")
+
         # 1. Fetch Project Details
         project_result = await db.execute(
             select(Project).where(cast(Project.id, String) == project_id)
@@ -87,12 +103,16 @@ class ContextService:
 
         # Fallback to friendly setup state if no data exists
         if not conversations:
-            return cls._get_empty_fallback(project_name, project_desc)
+            fallback = cls._get_empty_fallback(project_name, project_desc)
+            _resume_context_cache[str(project_id)] = fallback
+            return fallback
 
         # Fallback to local synthesis if OpenRouter API Key is missing
         if not settings.OPENROUTER_API_KEY:
             logger.warning("OPENROUTER_API_KEY is not set. Using local mock synthesis.")
-            return cls._get_mock_synthesis(project_name, summaries, tasks)
+            mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
+            _resume_context_cache[str(project_id)] = mock_synth
+            return mock_synth
 
         # 6. Build Synthesized Context for LLM prompt
         summaries_str = "\n".join([
@@ -166,25 +186,33 @@ class ContextService:
                 response = await client.post(url, headers=headers, json=payload)
                 if response.status_code != 200:
                     logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
-                    return cls._get_mock_synthesis(project_name, summaries, tasks)
+                    mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
+                    _resume_context_cache[str(project_id)] = mock_synth
+                    return mock_synth
 
                 response_data = response.json()
                 message_content = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 
                 if not message_content:
                     logger.error("OpenRouter returned empty message.")
-                    return cls._get_mock_synthesis(project_name, summaries, tasks)
+                    mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
+                    _resume_context_cache[str(project_id)] = mock_synth
+                    return mock_synth
 
                 cleaned_json = cls._clean_json_response(message_content)
                 parsed = json.loads(cleaned_json)
                 
                 # Validate using Pydantic
                 validated = ResumeContextResponse(**parsed)
-                return validated.model_dump()
+                result_dict = validated.model_dump()
+                _resume_context_cache[str(project_id)] = result_dict
+                return result_dict
 
         except Exception as e:
             logger.exception(f"Error generating resume context: {str(e)}")
-            return cls._get_mock_synthesis(project_name, summaries, tasks)
+            mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
+            _resume_context_cache[str(project_id)] = mock_synth
+            return mock_synth
 
     @classmethod
     def _get_empty_fallback(cls, project_name: str, project_desc: str) -> Dict[str, Any]:

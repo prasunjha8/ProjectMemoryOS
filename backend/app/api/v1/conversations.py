@@ -24,6 +24,7 @@ from app.schemas.conversation import (
 from app.services.parser_service import ParserService
 from app.services.ai_service import AIService
 from app.services.embedding_service import EmbeddingService
+from app.services.context_service import ContextService
 from app.api.middleware import validate_uploaded_file
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ async def process_conversation_task(conversation_id: str):
             # Set status to completed immediately so the user can see analysis right away
             conversation.processed_status = "completed"
             await db.commit()
+            ContextService.clear_project_cache(conversation.project_id)
             logger.info(f"Committed summary, tasks and set status to completed for conversation: {conversation_id}")
 
             # 2. Chunk text and generate embeddings in a separate try/except and transaction block
@@ -199,6 +201,7 @@ async def create_conversation(
     )
     db.add(conversation)
     await db.flush() # Secure the ID for background task
+    ContextService.clear_project_cache(project_id)
 
     # Queue background analysis, extraction, and vector index building
     background_tasks.add_task(process_conversation_task, conversation.id)
@@ -239,6 +242,7 @@ async def upload_conversation_file(
     )
     db.add(conversation)
     await db.flush()
+    ContextService.clear_project_cache(project_id)
 
     background_tasks.add_task(process_conversation_task, conversation.id)
     
@@ -293,7 +297,9 @@ async def delete_conversation(
 
     await verify_project_ownership(conversation.project_id, current_user_id, db)
     
+    project_id = conversation.project_id
     await db.delete(conversation)
+    ContextService.clear_project_cache(project_id)
     return None
 
 
@@ -329,6 +335,7 @@ async def reanalyze_conversation(
     # Set status to processing and save
     conversation.processed_status = "processing"
     await db.commit()
+    ContextService.clear_project_cache(conversation.project_id)
 
     # Queue background processor task
     background_tasks.add_task(process_conversation_task, conversation_id)

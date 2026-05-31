@@ -8,6 +8,7 @@ from app.core.security import get_current_user
 from app.models.project import Project
 from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskResponse, TaskUpdate
+from app.services.context_service import ContextService
 
 router = APIRouter()
 
@@ -71,6 +72,7 @@ async def create_task(
     )
     db.add(task)
     await db.flush()
+    ContextService.clear_project_cache(project_id)
     return task
 
 
@@ -102,6 +104,7 @@ async def update_task(
     for field, value in update_data.items():
         setattr(task, field, value)
 
+    ContextService.clear_project_cache(task.project_id)
     return task
 
 
@@ -127,5 +130,7 @@ async def delete_task(
     # Verify project ownership
     await verify_project_ownership(task.project_id, current_user_id, db)
 
+    project_id = task.project_id
     await db.delete(task)
+    ContextService.clear_project_cache(project_id)
     return None

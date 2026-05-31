@@ -126,7 +126,7 @@ export default function ProjectPage() {
   };
 
   return (
-    <div className="flex flex-col h-full gap-6 max-w-6xl mx-auto animate-fade-in text-left">
+    <div className="flex flex-col min-h-full pb-8 gap-6 max-w-6xl mx-auto animate-fade-in text-left">
       {/* Upper overview header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-900 pb-4">
         <div className="flex flex-col gap-1">
