@@ -157,6 +157,14 @@ SUPABASE_JWT_SECRET=your-supabase-jwt-secret
 OPENROUTER_API_KEY=your-openrouter-api-key
 OPENROUTER_MODEL=google/gemini-2.5-flash
 
+# Embeddings Configuration
+# Set to true to disable loading PyTorch/sentence-transformers locally.
+# This reduces container RAM requirements from ~500MB+ to <100MB, preventing OOMs.
+# Uses Hugging Face Inference API as a fallback when disabled.
+DISABLE_LOCAL_EMBEDDINGS=false
+# Optional: Hugging Face API Token for higher rate limits (if using API fallback)
+HF_API_TOKEN=your-huggingface-token
+
 # Optional Observability
 SENTRY_DSN=your-sentry-dsn
 RATE_LIMIT_PER_MINUTE=60
@@ -230,8 +238,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 ### Backend (Railway)
 This project is configured with a custom `railway.json` and Docker container settings.
 
-> [!WARNING]
-> **RAM Allocation**: The backend runs embedding models locally on CPU. You **MUST** select an instance size with at least **1GB - 2GB RAM** (Render Starter/Standard or Railway Custom resource limits) to prevent Out-Of-Memory (OOM) crashes during server startup.
+> [!TIP]
+> **RAM Allocation & OOM Prevention**: By default, the backend runs embedding models locally on CPU, which requires **500MB - 1GB RAM**. If you are deploying on a free tier (such as the default 500MB Railway free container), set `DISABLE_LOCAL_EMBEDDINGS=true` in your environment variables. This skips loading the heavy PyTorch runtime locally, keeping memory usage **under 100MB** while falling back to the Hugging Face Inference API for vector math.
 
 1. Deploy the `backend/` subdirectory from your repository on Railway.
 2. In your Railway service variables panel, set the variables listed in the backend env checklist above. Ensure `ENVIRONMENT` is set to `production` (this automatically disables Swagger docs and file reloading).
