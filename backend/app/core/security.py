@@ -33,14 +33,45 @@ async def get_current_user(
     
     token = credentials.credentials
     try:
-        # Supabase JWTs are signed with the HS256 algorithm using the JWT Secret
-        # Note: 'aud' (audience) in Supabase is usually set to 'authenticated'
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False}  # Can enable custom aud checking if needed
-        )
+        # Supabase JWT secrets are base64-encoded. We attempt to base64-decode the secret first.
+        # If decoding fails, we fall back to using the raw string.
+        import base64
+        
+        decoded_secret = None
+        try:
+            # Handle missing padding for base64 if necessary
+            padded_secret = settings.SUPABASE_JWT_SECRET
+            missing_padding = len(padded_secret) % 4
+            if missing_padding:
+                padded_secret += "=" * (4 - missing_padding)
+            decoded_secret = base64.b64decode(padded_secret)
+        except Exception:
+            pass
+
+        payload = None
+        last_error = None
+        
+        # Test both base64-decoded bytes and raw string secret
+        for key in [decoded_secret, settings.SUPABASE_JWT_SECRET]:
+            if not key:
+                continue
+            try:
+                payload = jwt.decode(
+                    token,
+                    key,
+                    algorithms=["HS256"],
+                    options={"verify_aud": False}
+                )
+                last_error = None
+                break
+            except jwt.InvalidTokenError as e:
+                last_error = e
+
+        if last_error:
+            raise last_error
+
+        if not payload:
+            raise jwt.InvalidTokenError("Failed to decode token with configured secrets")
         
         user_id: str = payload.get("sub")
         if not user_id:

@@ -38,6 +38,7 @@ export default function DashboardLayout({
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     initialize();
@@ -59,16 +60,19 @@ export default function DashboardLayout({
     e.preventDefault();
     if (!newProjectName.trim()) return;
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       const proj = await createProject(newProjectName, newProjectDesc);
       setNewProjectName("");
       setNewProjectDesc("");
+      setSubmitError(null);
       setIsNewProjectModalOpen(false);
       // Auto select the new project and navigate
       selectProject(proj);
       router.push(`/dashboard/project/${proj.id}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setSubmitError(err?.message || "Failed to create workspace. Please check your network connection or server status.");
     } finally {
       setIsSubmitting(false);
     }
@@ -347,6 +351,12 @@ export default function DashboardLayout({
                   className="w-full mt-2 bg-[#121217] border border-zinc-800 focus:border-violet-500 rounded-lg p-2.5 text-xs text-white outline-none resize-none"
                 />
               </div>
+
+              {submitError && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg p-3 text-left">
+                  {submitError}
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2 text-xs">
                 <button

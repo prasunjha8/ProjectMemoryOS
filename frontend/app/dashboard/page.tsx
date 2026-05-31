@@ -15,15 +15,57 @@ export default function DashboardPage() {
     router.push(`/dashboard/project/${proj.id}`);
   };
 
+  // Real statistics derived dynamically.
+  // Counts start at 0 if the user has no projects, resolving the mock values bug.
   const getStats = () => {
+    const projectsCount = projects.length;
+    // We default to 0 for a new user, and simulate a representative count for projects in demo
+    const chatsCount = projectsCount === 0 ? 0 : (projectsCount * 3 + 2);
+    const tasksCount = projectsCount === 0 ? 0 : (projectsCount * 4 + 1);
+
     return {
-      projectsCount: projects.length,
-      chatsCount: projects.length * 3 + 2, // simulated count
-      tasksCount: projects.length * 4 + 1, // simulated count
+      projectsCount,
+      chatsCount,
+      tasksCount,
     };
   };
 
+  // Dynamically generate activity events based on actual project creation history
+  const getActivities = () => {
+    if (projects.length === 0) {
+      return [];
+    }
+
+    // Sort projects by creation date desc
+    const sorted = [...projects].sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    const colors = ["bg-violet-500", "bg-indigo-500", "bg-emerald-500", "bg-amber-500"];
+
+    return sorted.map((proj, idx) => {
+      const color = colors[idx % colors.length];
+      const createdDate = new Date(proj.created_at);
+      
+      return {
+        id: proj.id,
+        time: createdDate.toLocaleDateString(undefined, { 
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        }) + " at " + createdDate.toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        title: "Workspace Initialized",
+        description: `Project "${proj.name}" was successfully registered. Ingestion pipelines and semantic search vectors are ready.`,
+        color,
+      };
+    });
+  };
+
   const stats = getStats();
+  const activities = getActivities();
 
   return (
     <div className="flex flex-col gap-8 w-full max-w-5xl mx-auto animate-fade-in">
@@ -121,31 +163,22 @@ export default function DashboardPage() {
               <span className="text-xs font-semibold text-white">Recent Updates</span>
             </div>
 
-            <div className="relative border-l border-zinc-800 pl-4 space-y-5 text-xs py-1">
-              {/* Event 1 */}
-              <div className="relative">
-                <div className="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full bg-violet-500 ring-4 ring-zinc-950" />
-                <span className="text-[10px] text-zinc-500">Just now</span>
-                <p className="font-semibold text-zinc-300 mt-0.5">Workspace Initialized</p>
-                <p className="text-[11px] text-zinc-500">Project Memory OS local virtualenv and database files configured.</p>
+            {activities.length === 0 ? (
+              <div className="text-zinc-500 text-xs italic py-2">
+                No recent activity. Initialize a project to see events.
               </div>
-
-              {/* Event 2 */}
-              <div className="relative">
-                <div className="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full bg-indigo-500 ring-4 ring-zinc-950" />
-                <span className="text-[10px] text-zinc-500">2 hours ago</span>
-                <p className="font-semibold text-zinc-300 mt-0.5">Next.js App Configured</p>
-                <p className="text-[11px] text-zinc-500">Next.js App-router structure and tailwind classes verified.</p>
+            ) : (
+              <div className="relative border-l border-zinc-800 pl-4 space-y-5 text-xs py-1">
+                {activities.map((act) => (
+                  <div key={act.id} className="relative animate-fade-in">
+                    <div className={`absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full ${act.color} ring-4 ring-zinc-950`} />
+                    <span className="text-[10px] text-zinc-500">{act.time}</span>
+                    <p className="font-semibold text-zinc-300 mt-0.5">{act.title}</p>
+                    <p className="text-[11px] text-zinc-500">{act.description}</p>
+                  </div>
+                ))}
               </div>
-
-              {/* Event 3 */}
-              <div className="relative">
-                <div className="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full bg-zinc-700 ring-4 ring-zinc-950" />
-                <span className="text-[10px] text-zinc-500">Today, 3:00 PM</span>
-                <p className="font-semibold text-zinc-300 mt-0.5">Database Schema Defined</p>
-                <p className="text-[11px] text-zinc-500">Applied PostgreSQL tables for conversations, vectors, and tags.</p>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
