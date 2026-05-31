@@ -69,6 +69,12 @@ async def get_current_user(
                 last_error = e
 
         if last_error:
+            import logging
+            logging.getLogger("app.security").error(
+                f"JWT Verification failed. Error: {str(last_error)}. "
+                f"Using Secret Length: {len(settings.SUPABASE_JWT_SECRET)}. "
+                f"Token starts with: {token[:15]}..."
+            )
             raise last_error
 
         if not payload:
