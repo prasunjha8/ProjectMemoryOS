@@ -17,12 +17,25 @@ class UserTokenPayload(BaseModel):
     role: str
 
 
+# Initialize JWKS client lazily when first needed
+_jwks_client = None
+
+def get_jwks_client():
+    global _jwks_client
+    if _jwks_client is None:
+        from jwt import PyJWKClient
+        jwks_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        _jwks_client = PyJWKClient(jwks_url)
+    return _jwks_client
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(reusable_oauth2),
     db: AsyncSession = Depends(get_db)
 ) -> str:
     """
     Decodes and validates the Supabase Auth JWT token.
+    Supports symmetric (HS256) and asymmetric (ES256, etc.) signature verification.
     Returns the user's UUID (sub claim).
     """
     if not credentials:
@@ -34,51 +47,69 @@ async def get_current_user(
     
     token = credentials.credentials
     try:
-        # Supabase JWT secrets are base64-encoded. We attempt to base64-decode the secret first.
-        # If decoding fails, we fall back to using the raw string.
-        import base64
-        
-        decoded_secret = None
+        # 1. Parse token header to inspect the algorithm
         try:
-            # Handle missing padding for base64 if necessary
-            padded_secret = settings.SUPABASE_JWT_SECRET
-            missing_padding = len(padded_secret) % 4
-            if missing_padding:
-                padded_secret += "=" * (4 - missing_padding)
-            decoded_secret = base64.b64decode(padded_secret)
-        except Exception:
-            pass
+            header = jwt.get_unverified_header(token)
+            alg = header.get("alg", "HS256")
+        except Exception as e:
+            raise jwt.InvalidTokenError(f"Failed to parse token header: {str(e)}")
 
         payload = None
         last_error = None
-        
-        # Test both base64-decoded bytes and raw string secret
-        for key in [decoded_secret, settings.SUPABASE_JWT_SECRET]:
-            if not key:
-                continue
+
+        if alg == "HS256":
+            # Supabase JWT secrets are base64-encoded. We attempt to base64-decode the secret first.
+            # If decoding fails, we fall back to using the raw string.
+            import base64
+            decoded_secret = None
             try:
+                padded_secret = settings.SUPABASE_JWT_SECRET
+                missing_padding = len(padded_secret) % 4
+                if missing_padding:
+                    padded_secret += "=" * (4 - missing_padding)
+                decoded_secret = base64.b64decode(padded_secret)
+            except Exception:
+                pass
+
+            # Test both base64-decoded bytes and raw string secret
+            for key in [decoded_secret, settings.SUPABASE_JWT_SECRET]:
+                if not key:
+                    continue
+                try:
+                    payload = jwt.decode(
+                        token,
+                        key,
+                        algorithms=["HS256"],
+                        options={"verify_aud": False}
+                    )
+                    last_error = None
+                    break
+                except jwt.InvalidTokenError as e:
+                    last_error = e
+        else:
+            # For asymmetric algorithms (e.g. ES256), verify against the JWKS endpoint
+            try:
+                jwks_client = get_jwks_client()
+                signing_key = jwks_client.get_signing_key_from_jwt(token)
                 payload = jwt.decode(
                     token,
-                    key,
-                    algorithms=["HS256"],
+                    signing_key.key,
+                    algorithms=[alg],
                     options={"verify_aud": False}
                 )
-                last_error = None
-                break
-            except jwt.InvalidTokenError as e:
+            except Exception as e:
                 last_error = e
 
         if last_error:
             import logging
             logging.getLogger("app.security").error(
                 f"JWT Verification failed. Error: {str(last_error)}. "
-                f"Using Secret Length: {len(settings.SUPABASE_JWT_SECRET)}. "
-                f"Token starts with: {token[:15]}..."
+                f"Algorithm: {alg}. Token starts with: {token[:15]}..."
             )
             raise last_error
 
         if not payload:
-            raise jwt.InvalidTokenError("Failed to decode token with configured secrets")
+            raise jwt.InvalidTokenError("Failed to decode token with configured secrets/JWKS")
         
         user_id: str = payload.get("sub")
         if not user_id:
