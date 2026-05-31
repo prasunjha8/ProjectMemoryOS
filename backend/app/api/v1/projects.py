@@ -1,5 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -44,6 +45,45 @@ async def create_project(
     db.add(project)
     await db.flush() # Flush to get generated UUID
     return project
+
+
+@router.get("/stats")
+async def get_user_stats(
+    current_user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get actual statistics (projects count, chats/conversations count, tasks count) for the current user.
+    """
+    # Count projects
+    project_count_res = await db.execute(
+        select(func.count(Project.id)).where(Project.user_id == current_user_id)
+    )
+    project_count = project_count_res.scalar() or 0
+
+    # Count conversations belonging to those projects
+    from app.models.conversation import Conversation
+    conv_count_res = await db.execute(
+        select(func.count(Conversation.id))
+        .join(Project, Project.id == Conversation.project_id)
+        .where(Project.user_id == current_user_id)
+    )
+    conv_count = conv_count_res.scalar() or 0
+
+    # Count tasks belonging to those projects
+    from app.models.task import Task
+    task_count_res = await db.execute(
+        select(func.count(Task.id))
+        .join(Project, Project.id == Task.project_id)
+        .where(Project.user_id == current_user_id)
+    )
+    task_count = task_count_res.scalar() or 0
+
+    return {
+        "projectsCount": project_count,
+        "chatsCount": conv_count,
+        "tasksCount": task_count
+    }
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

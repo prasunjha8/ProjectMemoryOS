@@ -5,6 +5,8 @@ import { useProjectStore, Project } from "@/store/projectStore";
 import { Folder, Calendar, Plus, ChevronRight, Activity, Database, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/authStore";
+import { apiClient } from "@/lib/api-client";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -15,20 +17,50 @@ export default function DashboardPage() {
     router.push(`/dashboard/project/${proj.id}`);
   };
 
-  // Real statistics derived dynamically.
-  // Counts start at 0 if the user has no projects, resolving the mock values bug.
-  const getStats = () => {
-    const projectsCount = projects.length;
-    // We default to 0 for a new user, and simulate a representative count for projects in demo
-    const chatsCount = projectsCount === 0 ? 0 : (projectsCount * 3 + 2);
-    const tasksCount = projectsCount === 0 ? 0 : (projectsCount * 4 + 1);
+  const [stats, setStats] = useState({ projectsCount: 0, chatsCount: 0, tasksCount: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
 
-    return {
-      projectsCount,
-      chatsCount,
-      tasksCount,
+  useEffect(() => {
+    let active = true;
+    async function loadStats() {
+      const isMock = useAuthStore.getState().isMock;
+      if (isMock) {
+        setStats({
+          projectsCount: projects.length,
+          chatsCount: projects.length === 0 ? 0 : projects.length * 3 + 2,
+          tasksCount: projects.length === 0 ? 0 : projects.length * 4 + 1,
+        });
+        setStatsLoading(false);
+        return;
+      }
+
+      try {
+        const session = useAuthStore.getState().session;
+        const res = await apiClient.get<any>("/projects/stats", {
+          token: session?.access_token || undefined,
+        });
+        if (active) {
+          setStats({
+            projectsCount: res.projectsCount ?? 0,
+            chatsCount: res.chatsCount ?? 0,
+            tasksCount: res.tasksCount ?? 0,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard stats:", err);
+      } finally {
+        if (active) {
+          setStatsLoading(false);
+        }
+      }
+    }
+
+    loadStats();
+
+    return () => {
+      active = false;
     };
-  };
+  }, [projects]);
 
   // Dynamically generate activity events based on actual project creation history
   const getActivities = () => {
@@ -64,7 +96,6 @@ export default function DashboardPage() {
     });
   };
 
-  const stats = getStats();
   const activities = getActivities();
 
   return (
