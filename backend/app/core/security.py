@@ -18,7 +18,8 @@ class UserTokenPayload(BaseModel):
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(reusable_oauth2)
+    credentials: HTTPAuthorizationCredentials = Depends(reusable_oauth2),
+    db: AsyncSession = Depends(get_db)
 ) -> str:
     """
     Decodes and validates the Supabase Auth JWT token.
@@ -79,6 +80,38 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token payload is missing 'sub' claim",
             )
+
+        # Self-healing: Check if the user profile exists in public.profiles.
+        # This handles the case where the user signed up *before* database schema.sql was applied.
+        try:
+            from app.models.user import Profile
+            profile_check = await db.execute(
+                select(Profile).where(Profile.id == user_id)
+            )
+            profile = profile_check.scalar_one_or_none()
+            if not profile:
+                email = payload.get("email", "")
+                user_metadata = payload.get("user_metadata", {})
+                full_name = user_metadata.get("full_name") or email.split("@")[0]
+                avatar_url = user_metadata.get("avatar_url")
+                
+                new_profile = Profile(
+                    id=user_id,
+                    email=email,
+                    full_name=full_name,
+                    avatar_url=avatar_url
+                )
+                db.add(new_profile)
+                # Flush ensures the profile ID is written to the active transaction 
+                # to satisfy foreign keys, without committing the session early.
+                await db.flush()
+        except Exception as e:
+            # Rollback the sub-transaction to keep the session clear of errors,
+            # but allow the API call to proceed.
+            await db.rollback()
+            import logging
+            logging.getLogger("app.security").error(f"Failed to auto-provision user profile: {str(e)}")
+
         return user_id
         
     except jwt.ExpiredSignatureError:
