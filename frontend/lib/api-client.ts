@@ -34,7 +34,13 @@ interface RequestOptions extends RequestInit {
   skipRetry?: boolean;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL = (() => {
+  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  if (url && !url.endsWith("/api/v1")) {
+    url = url.replace(/\/$/, "") + "/api/v1";
+  }
+  return url;
+})();
 
 /**
  * Enhanced fetch client with timeout and network retry capabilities.
