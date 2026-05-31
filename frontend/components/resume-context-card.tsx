@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { apiClient } from "@/lib/api-client";
 import { 
   Sparkles, 
   Activity, 
@@ -48,8 +49,6 @@ export default function ResumeContextCard({ projectId }: ResumeContextCardProps)
   const [data, setData] = useState<ResumeContextData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
   useEffect(() => {
     let active = true;
@@ -100,24 +99,16 @@ export default function ResumeContextCard({ projectId }: ResumeContextCardProps)
       }
 
       try {
-        const res = await fetch(`${API_URL}/projects/${projectId}/resume`, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token || ""}`,
-          },
+        const json = await apiClient.get<ResumeContextData>(`/projects/${projectId}/resume`, {
+          token: session?.access_token || undefined,
         });
 
-        if (!res.ok) {
-          throw new Error("Failed to load project resume state");
-        }
-
-        const json = await res.json();
         if (active) {
           setData(json);
         }
       } catch (err: any) {
         if (active) {
-          setError(err.message || "Something went wrong");
+          setError(err.detail || err.message || "Something went wrong");
         }
       } finally {
         if (active) {
@@ -133,7 +124,7 @@ export default function ResumeContextCard({ projectId }: ResumeContextCardProps)
     return () => {
       active = false;
     };
-  }, [projectId, session, isMock, API_URL]);
+  }, [projectId, session, isMock]);
 
   if (loading) {
     return (
