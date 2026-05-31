@@ -8,6 +8,8 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.api.router import api_router
 from app.core.database import get_db
+# Import models to register them in SQLAlchemy metadata
+import app.models
 
 # 1. Boot-time Environment Validation
 from app.core.env_validator import validate_environment
