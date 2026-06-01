@@ -1,6 +1,28 @@
 from typing import Any, Dict, List, Optional
+import os
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_disable_local_embeddings() -> bool:
+    # Auto-detect running on cloud instances like Railway, Render, etc.
+    is_cloud = any(k.startswith("RAILWAY_") or k.startswith("RENDER_") or "VERCEL" in k for k in os.environ)
+    
+    # Auto-detect low memory container environment (Linux /proc/meminfo < 1.2GB)
+    is_low_mem = False
+    try:
+        if os.path.exists("/proc/meminfo"):
+            with open("/proc/meminfo", "r") as f:
+                for line in f:
+                    if line.startswith("MemTotal:"):
+                        mem_kb = int(line.split()[1])
+                        if mem_kb < 1200000:
+                            is_low_mem = True
+                            break
+    except Exception:
+        pass
+    
+    return is_cloud or is_low_mem
 
 
 class Settings(BaseSettings):
@@ -26,7 +48,10 @@ class Settings(BaseSettings):
     OPENROUTER_MODEL: str = Field(default="google/gemini-2.5-flash", validation_alias="OPENROUTER_MODEL")
 
     # Embeddings configuration
-    DISABLE_LOCAL_EMBEDDINGS: bool = Field(default=False, validation_alias="DISABLE_LOCAL_EMBEDDINGS")
+    DISABLE_LOCAL_EMBEDDINGS: bool = Field(
+        default_factory=_default_disable_local_embeddings,
+        validation_alias="DISABLE_LOCAL_EMBEDDINGS"
+    )
     HF_API_TOKEN: Optional[str] = Field(default=None, validation_alias="HF_API_TOKEN")
 
     # Observability & Security Settings
