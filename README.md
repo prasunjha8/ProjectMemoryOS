@@ -22,11 +22,13 @@ ProjectMemoryOS acts as a **Memory Operating System** for your projects. Instead
 ## 🛠️ Implemented Systems
 
 ### 1. Resume Context Engine (Project Continuity)
-Instantly re-orient yourself after returning to a project. When you open a project dashboard, the Resume Context Engine queries recent timelines, open tasks, and active blockers to generate:
+Instantly re-orient yourself after returning to a project. When you open a project dashboard, the Resume Context Engine queries recent timelines, open tasks, active blockers, and ingestion history to generate:
 * **Current Project State Summary**: An LLM-synthesized narrative of where the project stands.
+* **Work Progress & Completion Stats**: A programmatic, zero-cost progress tracker calculating the completion percentage, total tasks, and completed vs. left tasks. Includes togglable lists to view what is done and what remains.
+* **Chronological Ingestion Flow & Timeline**: Visualizes the step-by-step evolution of your project, showing the chronological path of ingested conversations (e.g., from initial project specification to subsequent implementation logs and LLM chat exports).
 * **Blocker Analysis**: Active obstacles that are halting progress.
 * **Next-Step Synthesis**: Dynamically generated actionable recommendations based on past chat logic.
-* **Timeline Synthesis**: An chronological audit trail of recent updates and discussion themes.
+* **Timeline Synthesis**: A chronological audit trail of recent updates and discussion themes.
 
 ### 2. Conversation Relationship Intelligence (Pattern Detection)
 Automatically identifies conceptual linkages and connections between different chats using pgvector similarity metrics and OpenRouter LLM classifications:

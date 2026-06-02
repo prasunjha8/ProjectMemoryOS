@@ -1,10 +1,12 @@
 import json
 import re
 import logging
+import time
 from typing import Dict, Any, List, Optional
 import httpx
 from sqlalchemy import select, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models.project import Project
@@ -15,8 +17,9 @@ from app.schemas.context import ResumeContextResponse, RecentActivityItem, NextS
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache mapping project_id -> cached_dict
+# Simple in-memory cache mapping project_id -> (cached_dict, timestamp)
 _resume_context_cache = {}
+CACHE_TTL = 300  # Cache expires after 5 minutes (300 seconds)
 
 
 class ContextService:
@@ -45,10 +48,17 @@ class ContextService:
         Fetches database assets (recent chats, summaries, tasks, granular chunks)
         and calls OpenRouter to synthesize a clean project resumption context.
         """
-        # Check cache first
-        if str(project_id) in _resume_context_cache:
-            logger.info(f"Cache HIT for project resume context: {project_id}")
-            return _resume_context_cache[str(project_id)]
+        # Check cache first with TTL
+        now = time.time()
+        cached = _resume_context_cache.get(str(project_id))
+        if cached:
+            cached_data, timestamp = cached
+            if now - timestamp < CACHE_TTL:
+                logger.info(f"Cache HIT for project resume context: {project_id}")
+                return cached_data
+            else:
+                logger.info(f"Cache EXPIRED for project resume context: {project_id}")
+                _resume_context_cache.pop(str(project_id), None)
 
         logger.info(f"Cache MISS for project resume context: {project_id}. Synthesizing...")
 
@@ -82,7 +92,7 @@ class ContextService:
         )
         summaries = summary_result.scalars().all()
 
-        # 4. Fetch Latest 10 Incomplete Tasks
+        # 4. Fetch Latest 10 Incomplete Tasks (for LLM reasoning context)
         task_result = await db.execute(
             select(Task)
             .where(cast(Task.project_id, String) == project_id, Task.status != "completed")
@@ -101,20 +111,74 @@ class ContextService:
         )
         chunks = chunks_result.scalars().all()
 
+        # 6. Programmatically compute project task statistics (accurate, 0-cost, 0-hallucinations)
+        all_tasks_result = await db.execute(
+            select(Task)
+            .where(cast(Task.project_id, String) == project_id)
+            .order_by(Task.created_at.desc())
+        )
+        all_tasks = all_tasks_result.scalars().all()
+        
+        total_tasks_count = len(all_tasks)
+        completed_tasks = [t.title for t in all_tasks if t.status == "completed"]
+        incomplete_tasks = [t.title for t in all_tasks if t.status != "completed"]
+        completed_tasks_count = len(completed_tasks)
+        
+        completion_percentage = 0.0
+        if total_tasks_count > 0:
+            completion_percentage = round((completed_tasks_count / total_tasks_count) * 100, 1)
+
+        # 7. Programmatically compute chronological conversation ingestion flow
+        flow_result = await db.execute(
+            select(Conversation)
+            .where(cast(Conversation.project_id, String) == project_id)
+            .options(selectinload(Conversation.summary))
+            .order_by(Conversation.created_at.asc())
+        )
+        flow_conversations = flow_result.scalars().all()
+        
+        conversation_flow = []
+        for conv in flow_conversations:
+            summary_text = conv.summary.summary_text if conv.summary else None
+            conversation_flow.append({
+                "id": str(conv.id),
+                "title": conv.title,
+                "created_at": conv.created_at,
+                "source_type": conv.source_type,
+                "processed_status": conv.processed_status,
+                "summary_text": summary_text
+            })
+
         # Fallback to friendly setup state if no data exists
         if not conversations:
             fallback = cls._get_empty_fallback(project_name, project_desc)
-            _resume_context_cache[str(project_id)] = fallback
+            fallback.update({
+                "completed_tasks_count": completed_tasks_count,
+                "total_tasks_count": total_tasks_count,
+                "completion_percentage": completion_percentage,
+                "completed_tasks": completed_tasks,
+                "incomplete_tasks": incomplete_tasks,
+                "conversation_flow": conversation_flow
+            })
+            _resume_context_cache[str(project_id)] = (fallback, time.time())
             return fallback
 
         # Fallback to local synthesis if OpenRouter API Key is missing
         if not settings.OPENROUTER_API_KEY:
             logger.warning("OPENROUTER_API_KEY is not set. Using local mock synthesis.")
             mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
-            _resume_context_cache[str(project_id)] = mock_synth
+            mock_synth.update({
+                "completed_tasks_count": completed_tasks_count,
+                "total_tasks_count": total_tasks_count,
+                "completion_percentage": completion_percentage,
+                "completed_tasks": completed_tasks,
+                "incomplete_tasks": incomplete_tasks,
+                "conversation_flow": conversation_flow
+            })
+            _resume_context_cache[str(project_id)] = (mock_synth, time.time())
             return mock_synth
 
-        # 6. Build Synthesized Context for LLM prompt
+        # 8. Build Synthesized Context for LLM prompt
         summaries_str = "\n".join([
             f"- [{s.conversation_type or 'general'}]: {s.summary_text}"
             for s in summaries
@@ -187,7 +251,15 @@ class ContextService:
                 if response.status_code != 200:
                     logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
                     mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
-                    _resume_context_cache[str(project_id)] = mock_synth
+                    mock_synth.update({
+                        "completed_tasks_count": completed_tasks_count,
+                        "total_tasks_count": total_tasks_count,
+                        "completion_percentage": completion_percentage,
+                        "completed_tasks": completed_tasks,
+                        "incomplete_tasks": incomplete_tasks,
+                        "conversation_flow": conversation_flow
+                    })
+                    _resume_context_cache[str(project_id)] = (mock_synth, time.time())
                     return mock_synth
 
                 response_data = response.json()
@@ -196,22 +268,48 @@ class ContextService:
                 if not message_content:
                     logger.error("OpenRouter returned empty message.")
                     mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
-                    _resume_context_cache[str(project_id)] = mock_synth
+                    mock_synth.update({
+                        "completed_tasks_count": completed_tasks_count,
+                        "total_tasks_count": total_tasks_count,
+                        "completion_percentage": completion_percentage,
+                        "completed_tasks": completed_tasks,
+                        "incomplete_tasks": incomplete_tasks,
+                        "conversation_flow": conversation_flow
+                    })
+                    _resume_context_cache[str(project_id)] = (mock_synth, time.time())
                     return mock_synth
 
                 cleaned_json = cls._clean_json_response(message_content)
                 parsed = json.loads(cleaned_json)
                 
+                # Inject programmatic statistics & flow fields
+                parsed.update({
+                    "completed_tasks_count": completed_tasks_count,
+                    "total_tasks_count": total_tasks_count,
+                    "completion_percentage": completion_percentage,
+                    "completed_tasks": completed_tasks,
+                    "incomplete_tasks": incomplete_tasks,
+                    "conversation_flow": conversation_flow
+                })
+                
                 # Validate using Pydantic
                 validated = ResumeContextResponse(**parsed)
                 result_dict = validated.model_dump()
-                _resume_context_cache[str(project_id)] = result_dict
+                _resume_context_cache[str(project_id)] = (result_dict, time.time())
                 return result_dict
 
         except Exception as e:
             logger.exception(f"Error generating resume context: {str(e)}")
             mock_synth = cls._get_mock_synthesis(project_name, summaries, tasks)
-            _resume_context_cache[str(project_id)] = mock_synth
+            mock_synth.update({
+                "completed_tasks_count": completed_tasks_count,
+                "total_tasks_count": total_tasks_count,
+                "completion_percentage": completion_percentage,
+                "completed_tasks": completed_tasks,
+                "incomplete_tasks": incomplete_tasks,
+                "conversation_flow": conversation_flow
+            })
+            _resume_context_cache[str(project_id)] = (mock_synth, time.time())
             return mock_synth
 
     @classmethod

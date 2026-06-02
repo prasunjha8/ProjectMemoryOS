@@ -78,3 +78,15 @@ def validate_environment() -> None:
         )
     else:
         logger.info("Environment validated successfully. All systems ready.")
+        
+    # 5. Log embedding configuration diagnostics
+    try:
+        from app.core.config import settings
+        logger.info(f"DIAGNOSTICS: DISABLE_LOCAL_EMBEDDINGS is set to: {settings.DISABLE_LOCAL_EMBEDDINGS}")
+        if settings.DISABLE_LOCAL_EMBEDDINGS:
+            logger.info("DIAGNOSTICS: Local embeddings are disabled. Using Hugging Face Inference API / zero-vector fallback to prevent container OOMs.")
+        else:
+            logger.info("DIAGNOSTICS: Local embeddings are enabled. sentence-transformers will be loaded locally on demand.")
+    except Exception as e:
+        logger.error(f"DIAGNOSTICS Error reading settings: {str(e)}")
+

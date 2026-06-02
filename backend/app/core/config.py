@@ -6,21 +6,54 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _default_disable_local_embeddings() -> bool:
     # Auto-detect running on cloud instances like Railway, Render, etc.
-    is_cloud = any(k.startswith("RAILWAY_") or k.startswith("RENDER_") or "VERCEL" in k for k in os.environ)
+    is_cloud = any(
+        k.startswith("RAILWAY_") or 
+        k.startswith("RENDER_") or 
+        "VERCEL" in k or 
+        "HEROKU" in k or 
+        "FLY_" in k
+        for k in os.environ
+    )
     
-    # Auto-detect low memory container environment (Linux /proc/meminfo < 1.2GB)
+    # Auto-detect low memory container environment (cgroups limit or Linux /proc/meminfo < 1.2GB)
     is_low_mem = False
-    try:
-        if os.path.exists("/proc/meminfo"):
+    
+    # 1. cgroups v2 limit check (typically found in newer container runtimes)
+    if os.path.exists("/sys/fs/cgroup/memory.max"):
+        try:
+            with open("/sys/fs/cgroup/memory.max", "r") as f:
+                val = f.read().strip()
+                if val != "max":
+                    limit_bytes = int(val)
+                    if limit_bytes < 1200000000:  # < 1.2 GB
+                        is_low_mem = True
+        except Exception:
+            pass
+
+    # 2. cgroups v1 limit check (older container runtimes)
+    if not is_low_mem and os.path.exists("/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            with open("/sys/fs/cgroup/memory/memory.limit_in_bytes", "r") as f:
+                val = f.read().strip()
+                limit_bytes = int(val)
+                # Check that it's a realistic limit (unlimited cgroups is typically a huge number like 9223372036854771712)
+                if limit_bytes < 1200000000:  # < 1.2 GB
+                    is_low_mem = True
+        except Exception:
+            pass
+
+    # 3. Fallback to /proc/meminfo (for VM environments)
+    if not is_low_mem and os.path.exists("/proc/meminfo"):
+        try:
             with open("/proc/meminfo", "r") as f:
                 for line in f:
                     if line.startswith("MemTotal:"):
                         mem_kb = int(line.split()[1])
-                        if mem_kb < 1200000:
+                        if mem_kb < 1200000:  # < 1.2 GB in KB
                             is_low_mem = True
                             break
-    except Exception:
-        pass
+        except Exception:
+            pass
     
     return is_cloud or is_low_mem
 
